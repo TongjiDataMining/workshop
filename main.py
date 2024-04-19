@@ -1,7 +1,7 @@
 from hanlp_restful import HanLPClient
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+client = OpenAI()
 
 HanLP = HanLPClient('https://www.hanlp.com/api', auth='NTAyN0BiYnMuaGFubHAuY29tOkw5clFLbGhTRTIyNUppUDE=',
                     language='zh')  # auth不填则匿名，zh中文，mul多语种
@@ -84,7 +84,7 @@ for sent in sents:
         srl_text += i[0] + i[1] + i[2]
         USER_INPUT = "原句：" + original_text + "\n" + "语义角色提取后的句子：" + srl_text
         completion = client.chat.completions.create(
-            model="Qwen/Qwen1.5-14B-Chat-GGUF",
+            model="gpt-3.5-turbo-0125",
             messages=[
                 {"role": "system", "content": SYS_PROMPT},
                 {"role": "user", "content": USER_INPUT}
