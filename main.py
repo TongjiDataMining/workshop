@@ -12,20 +12,9 @@ SYS_PROMPT = '''
 判断语义角色提取后的句子是否*完整*、*正确*与*合理*，如果是请回复“T”，否则请回复“F”，请不要回复其他内容。
 '''
 
-
-texts=[]
-
-
-
-news=[]
-
-print('开始提取摘要并保存...')
-for news_text in tqdm.tqdm(texts):
-    news_summary= [key for key, value in HanLP.extractive_summarization(news_text, topk=6).items() if value > 0.1]
-    # with open(os.path.join('./news_summary',str(news_text.index)+'.txt'),'a',encoding='utf-8') as f:
-    #     for i in news_summary:
-    #         f.write(i+'\n')
-    news.append(news_summary) # 参数要根据具体情况调整
+sents=[]
+with open('./news_summary.txt', 'r', encoding='utf-8') as f:
+    sents=f.readlines()
 
 delimiters = ['。', '！', '？', '!', '?', '……']
 def split_text(text, delimiters):
@@ -38,11 +27,6 @@ def split_text(text, delimiters):
             start = i + 1
     return sents
 
-
-print("摘要如下:")
-# sents = split_text(text, delimiters)
-for n in news:
-    print(n)
 
 
 def get_triplegroups(sent):
@@ -67,26 +51,28 @@ def get_triplegroups(sent):
 
     return triple_groups
 
+print(sents)
+
 print("开始提取三元组...")
+print("这可能需要一些时间，请耐心等待...")
 final_result = []
-for n in tqdm.tqdm(news):
-    if len(n) == 0:
+for sent in tqdm.tqdm(sents):
+    if len(sent) == 0:
         continue
-    for sent in n:
-        triples = get_triplegroups(sent)
-        original_text = sent
-        for i in triples:
-            srl_text = ""
-            srl_text += i[0] + i[1] + i[2]
-            USER_INPUT = "原句：" + original_text + "\n" + "语义角色提取后的句子：" + srl_text
-            completion = client.chat.completions.create(
-                model="gpt-3.5-turbo-0125",
-                messages=[
-                    {"role": "system", "content": SYS_PROMPT},
-                    {"role": "user", "content": USER_INPUT}
-                ],
-                temperature=0.7, # 这里要结合具体模型调整
-            )
-            if completion.choices[0].message.content == "T":
-                final_result.append(i)
+    triples = get_triplegroups(sent)
+    original_text = sent
+    for i in triples:
+        srl_text = ""
+        srl_text += i[0] + i[1] + i[2]
+        USER_INPUT = "原句：" + original_text + "\n" + "语义角色提取后的句子：" + srl_text
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            messages=[
+                {"role": "system", "content": SYS_PROMPT},
+                {"role": "user", "content": USER_INPUT}
+            ],
+            temperature=0.7, # 这里要结合具体模型调整
+        )
+        if completion.choices[0].message.content == "T":
+            final_result.append(i)
 print(final_result)
