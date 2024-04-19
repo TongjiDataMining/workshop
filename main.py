@@ -1,8 +1,8 @@
 from hanlp_restful import HanLPClient
 from openai import OpenAI
+from neo4j import GraphDatabase
 
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
-
 HanLP = HanLPClient('https://www.hanlp.com/api', auth='NTAyN0BiYnMuaGFubHAuY29tOkw5clFLbGhTRTIyNUppUDE=',
                     language='zh')  # auth不填则匿名，zh中文，mul多语种
 SYS_PROMPT = '''
@@ -34,31 +34,21 @@ text = '''
 　　王毅参加会见。
 '''
 
+url = "bolt://localhost:7687"
+username = "neo4j"
+password = "dry330500"
 
-sents = [key for key, value in HanLP.extractive_summarization(text, topk=6).items() if value > 0.1] # 参数要根据具体情况调整
 
-delimiters = ['。', '！', '？', '!', '?', '……']
-def split_text(text, delimiters):
-    text.replace('\n', '')
-    sents = []
-    start = 0
-    for i, char in enumerate(text):
-        if char in delimiters:
-            sents.append(text[start:i + 1])
-            start = i + 1
+def summarize(text):
+    sents = [key for key, value in HanLP.extractive_summarization(text, topk=6).items() if value > 0.1]  # 参数要根据具体情况调整
     return sents
 
 
-# sents = split_text(text, delimiters)
-print(sents)
-
-
-def get_triplegroups(sent):
+def get_triples(sent):
     triple_groups = []
     doc = HanLP.parse(sent, tasks=['srl'])
 
     for i in range(len(doc['tok/fine'])):
-        ## chunk 1
         ent1 = ""
         ent2 = ""
         relation = ""
@@ -75,22 +65,65 @@ def get_triplegroups(sent):
 
     return triple_groups
 
-final_result = []
-for sent in sents:
-    triples = get_triplegroups(sent)
-    original_text = sent
+
+def filter_triples(sent, triples):
+    results = []
     for i in triples:
         srl_text = ""
+        if i[0] == "" or i[1] == "" or i[2] == "":
+            continue
         srl_text += i[0] + i[1] + i[2]
-        USER_INPUT = "原句：" + original_text + "\n" + "语义角色提取后的句子：" + srl_text
+        USER_INPUT = "原句：" + sent + "\n" + "语义角色提取后的句子：" + srl_text
         completion = client.chat.completions.create(
             model="Qwen/Qwen1.5-14B-Chat-GGUF",
             messages=[
                 {"role": "system", "content": SYS_PROMPT},
                 {"role": "user", "content": USER_INPUT}
             ],
-            temperature=0.7, # 这里要结合具体模型调整
+            temperature=0.7,  # 这里要结合具体模型调整
         )
         if completion.choices[0].message.content == "T":
-            final_result.append(i)
-print(final_result)
+            results.append(i)
+    return results
+
+
+def get_triple_groups(text: str):
+    sents = summarize(text)
+    final_result = []
+    for sent in sents:
+        triples = get_triples(sent)
+        results = filter_triples(sent, triples)
+        final_result.extend(results)
+    return final_result
+
+
+driver = GraphDatabase.driver(url, auth=(username, password))
+def add_triplet(tx, subject, relation, object):
+    query = (
+        "MERGE (e1:Entity {name: $subject}) "
+        "MERGE (e2:Entity {name: $object}) "
+        "MERGE (e1)-[r:RELATIONSHIP {type: $relation}]->(e2)"
+    )
+    tx.run(query, subject=subject, relation=relation, object=object)
+def find_triplets(tx, subject):
+    query = (
+        "MATCH (e1:Entity {name: $entity1})-[r:RELATIONSHIP]->(e2:Entity) "
+        "RETURN e1.name, r.type, e2.name"
+    )
+    result = tx.run(query, subject=subject)
+    return [(record["e1.name"], record["r.type"], record["e2.name"]) for record in result]
+
+
+with driver.session() as session:
+    session.write_transaction(add_triplet, "Alice", "KNOWS", "Bob")
+
+
+with driver.session() as session:
+    triplets = session.read_transaction(find_triplets, "Alice")
+    for triplet in triplets:
+        print(triplet)
+driver.close()
+
+
+# result = get_triple_groups(text)
+# print(result)
