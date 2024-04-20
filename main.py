@@ -2,6 +2,11 @@ from hanlp_restful import HanLPClient
 from openai import OpenAI
 import tqdm
 from database import NDB
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+from response import CommonResponse
+from contextlib import asynccontextmanager
 
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 HanLP = HanLPClient('https://www.hanlp.com/api', auth='NTAyN0BiYnMuaGFubHAuY29tOkw5clFLbGhTRTIyNUppUDE=',
@@ -12,9 +17,19 @@ SYS_PROMPT = '''
 '''
 NDB = NDB("bolt://localhost:7687", "neo4j", "dry330500")
 
-sents = []
-with open('./news_summary.txt', 'r', encoding='utf-8') as f:
-    sents = f.readlines()
+
+async def close_db_connection():
+    NDB.close()
+
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def summarize(text):
@@ -73,29 +88,60 @@ def get_triple_groups(sents):
     return final_result
 
 
-def execute_write(tx, subject, relation, object):
-    # 如果节点不存在，则创建节点，如果关系不存在，则创建关系
-    query = (
-        "MERGE (e1:Entity {name: $subject}) "
-        "MERGE (e2:Entity {name: $object}) "
-        "MERGE (e1)-[r:RELATIONSHIP {type: $relation}]->(e2)"
-    )
-    tx.run(query, subject=subject, relation=relation, object=object)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await close_db_connection()
 
 
-def find_triplets(tx, subject):
-    query = (
-        "MATCH (e1:Entity {name: $subject})-[r:RELATIONSHIP]->(e2:Entity) "
-        "RETURN e1.name, r.type, e2.name"
-    )
-    result = tx.run(query, subject=subject)
-    return [(record["e1.name"], record["r.type"], record["e2.name"]) for record in result]
+@app.post("/clear", summary="清空图数据库")
+async def clear_all():
+    NDB.clear_all()
+    return CommonResponse.success("清空成功")
 
 
-result = get_triple_groups(sents)
-print(result)
+@app.post("/articles", summary="插入文章, 并提取三元组，存入图数据库")
+async def add_articles(text: str):
+    sents = summarize(text)
+    result = get_triple_groups(sents)
+    for i in result:
+        NDB.add_triplet(i[0], i[1], i[2])
+    return CommonResponse.success("插入完成")
 
-for i in result:
-    NDB.add_triplet(i[0], i[1], i[2])
 
-print(NDB.find_triplets("北京"))
+@app.post("/triplets", summary="插入三元组")
+async def add_triplets(subject: str, relation: str, _object: str):
+    NDB.add_triplet(subject, relation, _object)
+    return CommonResponse.success("插入完成")
+
+
+@app.get("/triplets", summary="查询指定subject对应的三元组")
+async def find_triplets(subject: str):
+    results = NDB.find_triplets(subject)
+    if results:
+        return CommonResponse.success(results)
+    else:
+        return CommonResponse.error(404, "未找到相关数据")
+
+
+@app.get("/subjects", summary="查询所有subject")
+async def get_all_subjects():
+    results = NDB.get_all_subjects()
+    if results:
+        return CommonResponse.success(results)
+    else:
+        return CommonResponse.error(404, "未找到相关数据")
+
+
+@app.post("/init", summary="载入自带数据")
+async def init():
+    with open('./news_summary.txt', 'r', encoding='utf-8') as f:
+        sents = f.readlines()
+    result = get_triple_groups(sents)
+    for i in result:
+        NDB.add_triplet(i[0], i[1], i[2])
+    return CommonResponse.success("载入自带数据成功")
+
+
+if __name__ == '__main__':
+    uvicorn.run(app="main:app", host="localhost", port=8000, reload=True)

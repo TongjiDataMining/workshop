@@ -37,6 +37,11 @@ class NDB:
     def clear_all(self):
         with self.driver.session() as session:
             session.execute_write(self.__clear_graph)
+    
+    def get_all_subjects(self):
+        with self.driver.session() as session:
+            result = session.run("MATCH (s:Entity)-[r]->(:Entity) RETURN DISTINCT s.name AS subject")
+            return [record["subject"] for record in result]
 
     def close(self):
         self.driver.close()
