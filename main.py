@@ -1,3 +1,5 @@
+from time import sleep
+
 from hanlp_restful import HanLPClient
 from openai import OpenAI
 import tqdm
@@ -35,10 +37,11 @@ app.add_middleware(
 def summarize(text):
     sents = [key for key, value in HanLP.extractive_summarization(text, topk=6).items() if value > 0.1]  # 参数要根据具体情况调整
     return sents
-
+    
 
 def get_triples(sent):
     triple_groups = []
+    sleep(1)
     doc = HanLP.parse(sent, tasks=['srl'])
 
     for i in range(len(doc['tok/fine'])):
