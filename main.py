@@ -136,6 +136,15 @@ async def get_all_subjects():
         return CommonResponse.error(404, "未找到相关数据")
 
 
+@app.get("/relationships", summary="查询所有关系")
+async def get_all_relationships():
+    results = NDB.get_all_relationships()
+    if results:
+        return CommonResponse.success(results)
+    else:
+        return CommonResponse.error(404, "未找到相关数据")
+
+
 @app.post("/init", summary="载入自带数据")
 async def init():
     with open('./news_summary.txt', 'r', encoding='utf-8') as f:

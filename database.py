@@ -43,6 +43,17 @@ class NDB:
             result = session.run("MATCH (s:Entity)-[r]->(:Entity) RETURN DISTINCT s.name AS subject")
             return [record["subject"] for record in result]
 
+    def get_all_relationships(self):
+        with self.driver.session() as session:
+            query = """
+            MATCH (a)-[r]->(b)
+            RETURN ID(a) AS StartNodeID, a.name AS StartNodeName, ID(b) AS EndNodeID, b.name AS EndNodeName
+            """
+            result = session.run(query)
+            # 将结果转换为列表，包含起始和终止节点的ID和名称
+            relationships = [(record["StartNodeID"], record["StartNodeName"], record["EndNodeID"], record["EndNodeName"]) for record in result]
+            return relationships
+
     def close(self):
         self.driver.close()
 
