@@ -4,7 +4,7 @@ from hanlp_restful import HanLPClient
 from openai import OpenAI
 import tqdm
 from database import NDB
-from fastapi import FastAPI, Body
+from fastapi import FastAPI, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from response import CommonResponse
