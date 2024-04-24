@@ -9,8 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from response import CommonResponse
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
-
 
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 HanLP = HanLPClient('https://www.hanlp.com/api', auth='NTAyN0BiYnMuaGFubHAuY29tOkw5clFLbGhTRTIyNUppUDE=',
@@ -104,12 +102,10 @@ async def clear_all():
     NDB.clear_all()
     return CommonResponse.success("清空成功")
 
-class AddArticleBody(BaseModel):
-    text: str
-
 @app.post("/articles", summary="插入文章, 并提取三元组，存入图数据库")
-async def add_articles(body: AddArticleBody = Body()):
-    text = body.text
+async def add_articles(request: Request):
+    data = await request.json()
+    text = data["text"]
     sents = summarize(text)
     result = get_triple_groups(sents)
     for i in result:
